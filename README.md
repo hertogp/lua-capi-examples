@@ -4,14 +4,44 @@ title: Lua C API examples
 
 # Intro
 
+A small collection of examples on how to extend Lua with C libraries.
+
 # Makefile
 
-All examples in the `src` subdir have no dependencies other than some header
-files in the `inc` subdir.  Each example has both a c-file and a Lua test file
-to test the binding.  Valgrind is used to run the Lua test scripts while,
-checking for memory leaks, from the projects root dir.  The Lua test scripts
-should use `.  All build output goes into the `bld` subdir and is
-removed by `make clean`.
+The setup:
+
+```bash
+.
+├── LICENSE
+├── Makefile
+├── README.md
+├── bld
+├── inc
+│   ├── lauxlib.h
+│   ├── lua.h
+│   ├── luaconf.h
+│   └── lualib.h
+└── src
+    ├── ex01.c
+    ├── ex02.c
+    .
+    ├── ex10.c
+    ├── stackdump.h
+    ├── t_ex01.lua
+    ├── t_ex02.lua
+    .
+    └── t_ex10.lua
+
+3 directories, 29 files
+```
+
+There is one `src` directory for all example code, both C and Lua.  All
+includes are located in `inc` and all make artifacts go into `bld`.
+
+All Lua `t_ex<nr>.lua` test scripts add `bld/?.so` to their `package.cpath`.
+
+Tests are run from the project's root directory:via `make ex<nr>`.  A `make
+tests` runs them all.  All test runs use valgrind.
 
 ```bash
 # pick up examples in src subdir
