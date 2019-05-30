@@ -1,69 +1,5 @@
----
-title: Lua C API examples
-...
-
-# Intro
-
-# Makefile
-
-All examples in the `src` subdir have no dependencies other than some header
-files in the `inc` subdir.  Each example has both a c-file and a Lua test file
-to test the binding.  Valgrind is used to run the Lua test scripts while,
-checking for memory leaks, from the projects root dir.  The Lua test scripts
-should use `.  All build output goes into the `bld` subdir and is
-removed by `make clean`.
-
-```bash
-# pick up examples in src subdir
-EXAMPLES=$(sort $(wildcard src/*.c))
-
-# filename sans .c become targets
-TARGETS=$(EXAMPLES:src/%.c=%)
-
-RM=/bin/rm
-
-# build/run an example
-$(TARGETS): %: src/%.c
-	@echo "Example $@"
-	$(CC) -Iinc -undefined -shared -fPIC -o bld/$@.so $<
-	@echo "Calling src/t_$@.lua"
-	valgrind --leak-check=yes lua src/t_$@.lua
-
-tests:
-	@$(foreach target, $(TARGETS), make $(target);)
-
-# alternative build sequence (ex01.c example):
-#    $(CC) -Iinc -fPIC -shared -c src/ex01.c -o bld/ex01.o
-#    $(CC) -fPIC -shared -undefined bld/ex01.o -o ex01.so
-#    ./t_ex01.lua
-
-clean:
-	$(RM) -f bld/*.so bld/*.o
-```
-
-# The examples
-
-- ex01, calling C-functions from Lua
-- ex02, Lua's array example without metatable to check userdata type
-- ex03, Lua's array example with metatable to check userdata type
-- ex04, Lua's array example with object-like syntax on the Lua side
-- ex05, OddlyEven, store anything, the hard way
-- ex06, OddlyEven, store anything, the easy way
-- ex07, OddlyEven, add `pairs()` iterator
-- ex08, OddlyEven, add `ipairs()` iterator
-- ex09, OddlyEven, add `values()` iterator
-- ex10, OddlyEven, add `keys()` iterator
-
-All examples use the stackDump(lua_State *L, const char *) from
-`inc/stackdump.h` to dump the stack at various points in particular functions.
-Data is marshalled by the 'virtual stack` and the main hurdle is figuring out
-how that works, specifically how to best manipulate the stack.
-
-Anyway, the examples build on top of each other, so here's ex10:
-
-```c
-// file ex10.c
-// gcc -Isrc -undefined -shared -fPIC -o ex10.so src/ex10.c
+// file ex09.c
+// gcc -Isrc -undefined -shared -fPIC -o ex09.so src/ex09.c
 
 #include "lua.h"
 #include "lualib.h"
@@ -73,12 +9,15 @@ Anyway, the examples build on top of each other, so here's ex10:
 #include <malloc.h>
 #include <string.h>
 
+// See lua.h for LUA_TNONE, ... 100 will not clash w/ predefined types
+#define OE_TINTEGER 100
+
 /* OddlyEven - store any Lua object in C
-* ----------------------------------------------------
+* -------------------------------------------------------------------------
 * Store *anything* in an OddlyEven store
-* - adding a keys()-iterator
-*   for k in store:keys() do
-*     print(k)
+* - adding a values()-iterator
+*   for v in store:values() do
+*     print(v)
 *   end
 *
 */
@@ -89,10 +28,6 @@ Anyway, the examples build on top of each other, so here's ex10:
 #include "stackdump.h"  // stackDump(L, "txt")
 
 // the C-datastructure
-// The userdatum will be a pointer to two Items in memory,
-// indexed by a natural integer which is mapped to the range
-// of [0,1] using a mask of 0x1;  Normally other data may be
-// included in an entry, so we'll keep the struct envelope.
 
 typedef struct Item {
     int ref; // the key into the LUA_REGISTRY for this item
@@ -112,7 +47,7 @@ new (lua_State *L)
 
     stackDump(L, "2");    // [ud]
 
-    luaL_getmetatable(L, "ex10.OddlyEven");
+    luaL_getmetatable(L, "ex09.OddlyEven");
 
     stackDump(L, "3");    // [ud M]
 
@@ -132,7 +67,7 @@ Item *
 checkUserDatum (lua_State *L)
 {
     // check 1st argument is a valid OddlyEven store & return a ptr to it.
-    void *ud = luaL_checkudata(L, 1, "ex10.OddlyEven");
+    void *ud = luaL_checkudata(L, 1, "ex09.OddlyEven");
     luaL_argcheck(L, ud != NULL, 1, "`OddlyEven' storage expected");
 
     return (Item *)ud;
@@ -237,33 +172,28 @@ destroy(lua_State *L)
 // Iterator protocol: for k,v in pairs(store) do ... end
 // k = the control var
 // 1) Initialization
-//    The 'for'-loop calls pairs (the factory function) which
-//    returns 3 values that 'for' uses to control the iteration:
-//    - the iterator function - called by for successively
-//    - the invariant state - 1st arg for iterator
-//    - the control variable's initial value - 2nd arg for iterator
-// 
-//  If store has a __pairs metamethod, pairs will simply call that,
-//  so in this example, __pairs is the factory function.  If the
-//  factory func returns less than 3 values, the missing values are
-//  taken to be nil.
+//    The 'for'-loop calls pairs (the factory function) which returns 3 values
+//    that 'for' uses to control the iteration:
+//    - the iterator function - called successively w/ (inv.state, control var)
+//    - the invariant state - same for all iteration calls
+//    - the initial value for the control variable
+//  If store has a __pairs metamethod, pairs will simply call that, so in
+//  this example, __pairs is the factory function.  If the factory func returns
+//  less than 3 values, the missing values are taken to be nil.
 //
 // 2) Iteration
-//    The 'for'-loop calls the iterator function with (initial
-//    value of) the invariant state and the current value of the
-//    control variable as its arguments.  The iterator function
-//    returns the new value for the control variable and any other
-//    values to match the 'exp-list', here 'k,v'.
+//    The 'for'-loop then calls the iterator function with (initial value of)
+//    the invariant state and the current value of the control variable as its
+//    arguments.  The iterator function returns the new value for the control
+//    variable and any other values to match the 'exp-list', here 'k,v'.
 //
-//    Iteration stops once the iterator returns nil for the control
-//    variable.
-
+//    Iteration stops once the iterator returns nil for the control variable.
 static int
-iter_pairs(lua_State *L)
+iter_kv(lua_State *L)
 {
   // the actual iterator func
 
-  printf("iter_pairs:\n");
+  printf("iter_kv:\n");
   stackDump(L, "0");                   // [ud idx] == inv.state key
 
   luaL_checktype(L, 2, LUA_TNUMBER);   // idx needs to be a number
@@ -289,63 +219,56 @@ pairs(lua_State *L)
   // - -1 as the initial control value
 
   printf("__pairs factory:\n");
-  stackDump(L, "0");                // [ud]
-  lua_pushcfunction(L, iter_pairs); // [ud f]
+  stackDump(L, "0");               // [ud]
+  lua_pushcfunction(L, iter_kv);      // [ud f]
   stackDump(L, "1");
-  lua_rotate(L, 1, 1);              // [f ud]
+  lua_rotate(L, 1, 1);             // [f ud]
   stackDump(L, "2");
-  lua_pushinteger(L, -1);           // [f ud -1]
+  lua_pushinteger(L, -1);          // [f ud -1]
   stackDump(L, "3");
 
   return 3; // [iterator_func invariant_state initial_control_value]
 }
 
 // ipairs iterator
-
-// OddlyEven is A bit of a bad example for this since we have a weird
-// mapping of indices to 0 or 1 and no string keys.  Anyway, the
-// protocol to follow is similar: the factory func __ipairs returns
-// [iter_f ud idx], the last is usually nil to start with, but not
-// so in this case.
-
+// A bit of a bad example, since the protocol for ipairs is almost the same
+// as for the pairs iterator, except that the index starts at 0 and the fact
+// that OddlyEven has no 'string' keys ...  Anyway, so simulate the end of the
+// for ipairs loop then 'second' element is mapped to nil.
 static int
-iter_ipairs(lua_State *L)
+iter_k(lua_State *L)
 {
   // the actual iterator func
 
-  printf("iter_ipairs:\n");
-  stackDump(L, "0");                   // [ud idx] == [state key]
+  printf("iter_k:\n");
+  stackDump(L, "0");                   // [ud idx] == inv.state key
 
   luaL_checktype(L, 2, LUA_TNUMBER);   // idx needs to be a number
   Item *p = checkUserDatum(L);         // invariant state is the userdatum
   int idx = luaL_checkinteger(L, 2);   // translate number to int
 
   idx = idx + 1;                       // next available index
-  if (idx > 2) return 0;               // we're done
+  if (idx > 2) return 0;               // will set for's k,v to nil,nil
   lua_pushinteger(L, idx);             // push the control var [.., idx']
-  idx &= 0x1;                          // map idx back to [0,1]
-
-  // get value associated with the ref in slot idx in OddlyEven
-  // and push it onto the stack
-  lua_rawgeti(L, LUA_REGISTRYINDEX, (p+idx)->ref);
-
+  idx &= 0x1;                          // map back to [0,1]
+  lua_rawgeti(L, LUA_REGISTRYINDEX, (p+idx)->ref);  // and its value
   if (lua_isnil(L, -1)) return 0;      // stop iteration at nil-value
-  stackDump(L, "1");                  // [ud idx idx' value]
-  return 2;                           // k,v := [.., idx', value]
+  stackDump(L, "1");                  // [ud idx idxr'+ value]
+  return 2;                           // k,v := [.., idxr'+, value]
 }
 
 static int
 ipairs(lua_State *L)
 {
-  // factory function for k,v in ipairs(store) do .. end
+  // factory function for k,v in pairs(store) do .. end
   // returns: [f ud -1]
   // - iterator C-function,
   // - userdatum as invariant state, and
-  // - 0 as the initial control value
+  // - -1 as the initial control value
 
   printf("__ipairs factory:\n");
   stackDump(L, "0");                 // [ud]
-  lua_pushcfunction(L, iter_ipairs); // [ud f]
+  lua_pushcfunction(L, iter_k);      // [ud f]
   stackDump(L, "1");
   lua_rotate(L, 1, 1);               // [f ud]
   stackDump(L, "2");
@@ -359,9 +282,9 @@ ipairs(lua_State *L)
 // values()-iterator
 
 static int
-iter_values(lua_State *L)
+iter_v(lua_State *L)
 {
-  printf("iter_values:\n");
+  printf("iter_v:\n");
   stackDump(L, "initial stack - 0");   // [ud oldval] (1st time, oldval=nil)
   Item *p = checkUserDatum(L);
   int idx = lua_tointeger(L, lua_upvalueindex(1));  // get upvalue(1)
@@ -370,7 +293,7 @@ iter_values(lua_State *L)
   lua_pushinteger(L, idx + 1);              // [ud oldval idx']
   stackDump(L, "pushed nex idx - 1");
   lua_replace(L, lua_upvalueindex(1));
-  stackDump(L, "set upvalue(1) - 2");  // [ud val]-> upvalue(1) = idx'
+  stackDump(L, "set upvalue(1) - 2");  // [ud val]   -> upvalue(1) = idx'
   idx &= 0x01;                       // map to [0,1]
   lua_rawgeti(L, LUA_REGISTRYINDEX, (p+idx)->ref);  // value by reg-ref
   stackDump(L, "pushed val - 3");                 // [ud old-val val]
@@ -383,47 +306,10 @@ values(lua_State *L)
   // factory function for iterating only the values
   // values() should return a closure func with 1 upvalue: the current index.
   printf("values():\n");
-  stackDump(L, "0");                    // [ud]
-  lua_pushinteger(L, 0);                // [ud idx]
-  lua_pushcclosure(L, iter_values, 1);  // [ud f]
-  lua_rotate(L, 1, 1);                  // [f ud] -- iter_func invariant.state
-  stackDump(L, "1");
-
-  return 2;
-}
-
-// keys()-iterator
-
-static int
-iter_keys(lua_State *L)
-{
-  printf("iter_keys:\n");
-  stackDump(L, "initial stack - 0");     // [ud oldval] (1st time, oldval=nil)
-  int idx = lua_tointeger(L, lua_upvalueindex(1));  // get upvalue(1)
-  if (idx < -1 || idx > 0) return 0;     // we're done
-  idx += 1;                              // next valid key in [0, 1]
-  lua_pushinteger(L, idx);               // [ud idx idx']
-  stackDump(L, "pushed next idx - 1");
-  lua_replace(L, -2);                    // [ud idx']
-  stackDump(L, "pushed idx again - 2");
-  lua_pushinteger(L, idx);               // [ud idx' idx']
-  stackDump(L, "pushed 2nd time - 3");
-  lua_replace(L, lua_upvalueindex(1));
-  stackDump(L, "set upvalue(1) - 4");    // [ud idx']
-  return 1;
-}
-
-static int
-keys(lua_State *L)
-{
-  // factory function for iterating only the keys
-  // keys() returns a closure func with 1 upvalue: the current index.
-  // and the invariant state for the iteration
-  printf("keys():\n");
-  stackDump(L, "0");                   // [ud]
-  lua_pushinteger(L, -1);              // [ud nil]  - start w/ nil
-  lua_pushcclosure(L, iter_keys, 1);   // [ud f]
-  lua_rotate(L, 1, 1);                 // [f ud] -- iter_func invariant.state
+  stackDump(L, "0");                // [ud]
+  lua_pushinteger(L, 0);            // [ud idx]
+  lua_pushcclosure(L, iter_v, 1);   // [ud f]
+  lua_rotate(L, 1, 1);              // [f ud] -- iter_func invariant.state
   stackDump(L, "1");
 
   return 2;
@@ -439,7 +325,6 @@ static const struct luaL_Reg funcs [] = {
 
 // the object's (meta) methods
 static const struct luaL_Reg meths [] = {
-    {"keys", keys},
     {"values", values},
     {"__tostring", toString},
     {"__newindex", set},
@@ -452,9 +337,9 @@ static const struct luaL_Reg meths [] = {
 };
 
 //luaopen_<libname>
-int luaopen_ex10 (lua_State *L)
+int luaopen_ex09 (lua_State *L)
 {
-    luaL_newmetatable(L, "ex10.OddlyEven");  // [ M ]
+    luaL_newmetatable(L, "ex09.OddlyEven");  // [ M ]
     lua_pushvalue(L, -1);                    // [ M, M ]
     lua_setfield(L, -2, "__index");          // [ M{__index=M} ]
     luaL_setfuncs(L, meths, 0);              // [ M ..} ]
@@ -462,5 +347,3 @@ int luaopen_ex10 (lua_State *L)
 
     return 1;
 }
-```
-
