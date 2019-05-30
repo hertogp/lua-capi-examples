@@ -264,7 +264,7 @@ destroy(lua_State *L)
     lua_pushinteger(L, 0);
     lua_pushnil(L);
     stackDump(L, "2");
-    set(L);
+    set(L);                // library's set() to assign nil value
     lua_pop(L, 2);
 
     // clear Odd entry
@@ -272,7 +272,7 @@ destroy(lua_State *L)
     lua_pushinteger(L, 1);
     lua_pushnil(L);
     stackDump(L, "3");
-    set(L);
+    set(L);               // library's set() to assign nil value
     lua_pop(L, 2);
     stackDump(L, "4");
     return 0;
