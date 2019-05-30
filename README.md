@@ -1,8 +1,4 @@
----
-title: Lua C API examples
-...
-
-# Intro
+# Lua C API Examples
 
 A small collection of examples on how to extend Lua with C libraries.
 
